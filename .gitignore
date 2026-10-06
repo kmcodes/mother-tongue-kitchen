@@ -19,8 +19,9 @@ secrets/
 *.opus
 *.webm
 *.flac
-recordings/
-audio-samples/
+/recordings/
+/audio-samples/
+/spike-audio/
 
 # Dependencies and build output
 node_modules/
@@ -52,3 +53,4 @@ Thumbs.db
 # Scratch
 tmp/
 scratch/
+.superpowers/
