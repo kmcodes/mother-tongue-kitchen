@@ -13,6 +13,18 @@ describe("finishRecording", () => {
     expect(up).not.toHaveBeenCalled();
     expect(await store.read("s")).toBeNull();
   });
+  it("[M1] judges the real duration, not a rounded one (1.6 s is too short)", async () => {
+    const store = fresh(); const up = vi.fn();
+    await store.begin("s", "audio/webm"); await store.append("s", 0, buf(1));
+    expect(await finishRecording(store, "s", 1.6, up)).toEqual({ ok: false, reason: "too_short" });
+    expect(up).not.toHaveBeenCalled();
+  });
+  it("uploads a whole number of seconds", async () => {
+    const store = fresh(); const up = vi.fn().mockResolvedValue({ recipeId: "r" });
+    await store.begin("s", "audio/webm"); await store.append("s", 0, buf(1));
+    await finishRecording(store, "s", 12.6, up);
+    expect(up.mock.calls[0][1]).toBe(13);
+  });
   it("rejects zero bytes", async () => {
     const store = fresh(); const up = vi.fn();
     await store.begin("s", "audio/webm");

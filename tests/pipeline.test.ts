@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import { makeTestDb } from "@/tests/helpers/test-db";
 import { upsertUserByPhone } from "@/lib/users";
 import { createRecipe, getRecipeById, getRecipeForOwner, listSegments } from "@/lib/recipes";
-import { startTranscription, completeTranscription, retryRecipe, type PipelineDeps } from "@/lib/pipeline";
+import { startTranscription, completeTranscription, retryRecipe, recoverStale, type PipelineDeps } from "@/lib/pipeline";
 import type { SttState } from "@/lib/stt/types";
 
 const structured = JSON.stringify({ title: "Aloo Gobi", ingredients: [{ name: "aloo" }], steps: ["kaato"] });
@@ -101,5 +101,32 @@ describe("pipeline", () => {
     const { db, recipe } = await setup(async () => doneState);
     const other = await upsertUserByPhone(db, "+919123456789", "Ravi");
     expect(await getRecipeForOwner(db, recipe.id, other.id)).toBeNull();
+  });
+
+  it("[I4] recoverStale restarts old uploaded recipes and fails stuck ones so Retry appears", async () => {
+    const { db, recipe, deps } = await setup(async () => doneState);
+    const old = "update recipes set status = $2, stt_job_id = null, updated_at = now() - interval '10 minutes' where id = $1";
+    // uploaded and old: restarted
+    await db.query(old, [recipe.id, "uploaded"]);
+    expect(await recoverStale(deps, 5)).toEqual({ restarted: 1, failed: 0 });
+    expect((await getRecipeById(db, recipe.id))?.status).toBe("transcribing");
+    // transcribing without a job id: failed
+    await db.query(old, [recipe.id, "transcribing"]);
+    expect(await recoverStale(deps, 5)).toEqual({ restarted: 0, failed: 1 });
+    expect((await getRecipeById(db, recipe.id))?.status).toBe("failed");
+    // structuring and old: failed
+    await db.query(old, [recipe.id, "structuring"]);
+    expect(await recoverStale(deps, 5)).toEqual({ restarted: 0, failed: 1 });
+    // fresh ones are left alone
+    await db.query("update recipes set status = 'structuring', updated_at = now() where id = $1", [recipe.id]);
+    expect(await recoverStale(deps, 5)).toEqual({ restarted: 0, failed: 0 });
+  });
+
+  it("[I4] a retry starts from a clean slate (old segments are removed)", async () => {
+    const { db, user, recipe, deps } = await setup(async () => doneState);
+    await db.query("insert into segments (recipe_id, idx, text, start_sec, end_sec) values ($1, 0, 'stale', 0, 1)", [recipe.id]);
+    await db.query("update recipes set status = 'failed' where id = $1", [recipe.id]);
+    expect(await retryRecipe(deps, recipe.id, user.id)).toBe(true);
+    expect(await listSegments(db, recipe.id)).toEqual([]);
   });
 });

@@ -5,7 +5,7 @@ export class StructureError extends Error {}
 
 const schema = z.object({
   title: z.string().min(1),
-  ingredients: z.array(z.object({ name: z.string().min(1), quantity: z.string().min(1).optional() })),
+  ingredients: z.array(z.object({ name: z.string().min(1), quantity: z.string().nullish().transform((q) => (q?.trim() ? q.trim() : undefined)) })),
   steps: z.array(z.string().min(1)),
 });
 export type StructuredRecipe = z.infer<typeof schema>;

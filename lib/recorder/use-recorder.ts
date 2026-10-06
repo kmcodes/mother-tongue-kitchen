@@ -1,6 +1,9 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { createAppendQueue } from "@/lib/recorder/append-queue";
 import { createChunkStore, type ChunkStore } from "@/lib/recorder/chunk-store";
+import { stopRecorder } from "@/lib/recorder/stop-recorder";
+import { createStopwatch } from "@/lib/recorder/stopwatch";
 
 export type RecorderState = "idle" | "recording" | "paused" | "stopped" | "error";
 
@@ -22,7 +25,8 @@ export function useRecorder() {
   const wakeRef = useRef<WakeLockSentinel | null>(null);
   const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
-  const secondsRef = useRef(0);
+  const watchRef = useRef(createStopwatch());
+  const queueRef = useRef(createAppendQueue());
 
   const store = useCallback(() => (storeRef.current ??= createChunkStore()), []);
 
@@ -35,8 +39,12 @@ export function useRecorder() {
       sessionRef.current = id;
       await store().begin(id, rec.mimeType || mimeType || "audio/webm");
       let seq = 0;
-      rec.ondataavailable = async (e) => {
-        if (e.data.size > 0) await store().append(id, seq++, await e.data.arrayBuffer());
+      queueRef.current = createAppendQueue();
+      rec.ondataavailable = (e) => {
+        if (e.data.size === 0) return;
+        const mySeq = seq++;
+        // Register the write synchronously so stop() can wait for it.
+        queueRef.current.add((async () => store().append(id, mySeq, await e.data.arrayBuffer()))());
       };
       rec.start(5000);
       recRef.current = rec;
@@ -46,11 +54,13 @@ export function useRecorder() {
       ctx.createMediaStreamSource(stream).connect(analyser);
       const data = new Uint8Array(analyser.frequencyBinCount);
       audioCtxRef.current = ctx;
-      secondsRef.current = 0; setSeconds(0);
+      watchRef.current = createStopwatch();
+      watchRef.current.start();
+      setSeconds(0);
       tickRef.current = setInterval(() => {
         analyser.getByteTimeDomainData(data);
         setLevel(Math.max(...data) / 255 - 0.5);
-        if (rec.state === "recording") { secondsRef.current += 0.25; setSeconds(Math.floor(secondsRef.current)); }
+        setSeconds(Math.floor(watchRef.current.elapsedSec()));
       }, 250);
       setState("recording");
     } catch {
@@ -59,21 +69,21 @@ export function useRecorder() {
     }
   }, [store]);
 
-  const pause = useCallback(() => { recRef.current?.pause(); setState("paused"); }, []);
-  const resume = useCallback(() => { recRef.current?.resume(); setState("recording"); }, []);
+  const pause = useCallback(() => { recRef.current?.pause(); watchRef.current.pause(); setState("paused"); }, []);
+  const resume = useCallback(() => { recRef.current?.resume(); watchRef.current.resume(); setState("recording"); }, []);
 
   const stop = useCallback(async () => {
     const rec = recRef.current;
     if (!rec) return null;
-    await new Promise<void>((resolve) => { rec.addEventListener("stop", () => resolve(), { once: true }); rec.stop(); });
-    // Give the last ondataavailable write a moment to land in IndexedDB.
-    await new Promise((r) => setTimeout(r, 150));
+    watchRef.current.pause();
+    await stopRecorder(rec);
+    await queueRef.current.settled();
     rec.stream.getTracks().forEach((t) => t.stop());
     if (tickRef.current) clearInterval(tickRef.current);
     await audioCtxRef.current?.close();
     await wakeRef.current?.release().catch(() => {});
     setState("stopped");
-    return { sessionId: sessionRef.current, durationSec: Math.round(secondsRef.current) };
+    return { sessionId: sessionRef.current, durationSec: watchRef.current.elapsedSec() };
   }, []);
 
   useEffect(() => () => { if (tickRef.current) clearInterval(tickRef.current); }, []);

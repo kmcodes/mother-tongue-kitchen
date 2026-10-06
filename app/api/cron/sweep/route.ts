@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireEnv } from "@/lib/env";
 import { buildDeps } from "@/lib/deps";
-import { completeTranscription } from "@/lib/pipeline";
+import { completeTranscription, recoverStale } from "@/lib/pipeline";
 import { listStuck } from "@/lib/recipes";
 
 export async function GET(request: Request) {
@@ -10,5 +10,6 @@ export async function GET(request: Request) {
   const stuck = await listStuck(deps.db, 5);
   const results: string[] = [];
   for (const r of stuck) results.push(await completeTranscription(deps, r.stt_job_id));
-  return NextResponse.json({ checked: stuck.length, results });
+  const recovered = await recoverStale(deps, 5);
+  return NextResponse.json({ checked: stuck.length, results, recovered });
 }

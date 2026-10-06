@@ -20,7 +20,7 @@ export function Recorder() {
     const res = await finishRecording(r.store(), done.sessionId, done.durationSec, uploadRecording);
     if (res.ok) { router.push("/"); return; }
     setBusy(false);
-    if (res.reason === "upload_failed") setMessage("Saved on this phone. It will upload when you are back online.");
+    if (res.reason === "upload_failed") setMessage("Saved on this phone. When you are online, go to Home and tap Upload now.");
     else setMessage("That was too short, try again.");
   }
 

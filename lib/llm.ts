@@ -6,6 +6,7 @@ export function gatewayLlm(): LlmClient {
     async complete(system, user) {
       const res = await fetch("https://ai-gateway.vercel.sh/v1/chat/completions", {
         method: "POST",
+        signal: AbortSignal.timeout(60_000),
         headers: { authorization: `Bearer ${requireEnv("AI_GATEWAY_API_KEY")}`, "content-type": "application/json" },
         body: JSON.stringify({ model: requireEnv("STRUCTURE_MODEL"), temperature: 0, messages: [{ role: "system", content: system }, { role: "user", content: user }] }),
       });

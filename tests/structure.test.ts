@@ -17,6 +17,11 @@ describe("structureRecipe", () => {
     const llm = { complete: vi.fn().mockResolvedValue("```json\n" + good + "\n```") };
     expect((await structureRecipe("x", llm)).steps.length).toBe(2);
   });
+  it("[I5] accepts null or empty quantity, which LLMs often emit", async () => {
+    const out = JSON.stringify({ title: "T", ingredients: [{ name: "namak", quantity: null }, { name: "tel", quantity: "" }, { name: "jeera", quantity: " 1 tsp " }], steps: ["a"] });
+    const r = await structureRecipe("x", { complete: vi.fn().mockResolvedValue(out) });
+    expect(r.ingredients).toEqual([{ name: "namak" }, { name: "tel" }, { name: "jeera", quantity: "1 tsp" }]);
+  });
   it("retries once on invalid output, then succeeds", async () => {
     const llm = { complete: vi.fn().mockResolvedValueOnce("not json").mockResolvedValueOnce(good) };
     expect((await structureRecipe("x", llm)).title).toBe("आलू गोभी");

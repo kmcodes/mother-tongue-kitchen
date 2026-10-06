@@ -11,7 +11,7 @@ export async function finishRecording(store: ChunkStore, sessionId: string, dura
   if (!blob || blob.size === 0) { await store.discard(sessionId); return { ok: false, reason: "empty" }; }
   if (durationSec < MIN_SECONDS) { await store.discard(sessionId); return { ok: false, reason: "too_short" }; }
   try {
-    const { recipeId } = await upload(blob, durationSec);
+    const { recipeId } = await upload(blob, Math.max(1, Math.round(durationSec)));
     await store.discard(sessionId);
     return { ok: true, recipeId };
   } catch {

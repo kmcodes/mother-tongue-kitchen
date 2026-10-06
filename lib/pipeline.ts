@@ -16,6 +16,7 @@ export async function startTranscription(deps: PipelineDeps, recipeId: string): 
   const { db } = deps;
   const claimed = await db.query("update recipes set status = 'transcribing', error = null, updated_at = now() where id = $1 and status in ('uploaded','failed') returning id", [recipeId]);
   if (claimed.length === 0) return;
+  await db.query("delete from segments where recipe_id = $1", [recipeId]);
   const recipe = await getRecipeById(db, recipeId);
   try {
     const audio = await deps.readAudio(recipe!.audio_pathname);
@@ -65,4 +66,20 @@ export async function retryRecipe(deps: PipelineDeps, recipeId: string, ownerId:
   if (!recipe || recipe.status !== "failed") return false;
   await startTranscription(deps, recipeId);
   return true;
+}
+
+// Rescues recipes stranded by a crashed or timed-out function. Anything it cannot safely resume
+// is marked failed so the Retry button appears.
+export async function recoverStale(deps: PipelineDeps, olderThanMinutes: number): Promise<{ restarted: number; failed: number }> {
+  const { db } = deps;
+  const age = "updated_at < now() - ($1 || ' minutes')::interval";
+  const minutes = String(olderThanMinutes);
+  const uploaded = await db.query<{ id: string }>(`select id from recipes where status = 'uploaded' and ${age}`, [minutes]);
+  for (const r of uploaded) await startTranscription(deps, r.id);
+  const failed = await db.query(
+    `update recipes set status = 'failed', error = 'Interrupted. Tap Retry.', updated_at = now()
+     where ((status = 'transcribing' and stt_job_id is null) or status = 'structuring') and ${age} returning id`,
+    [minutes],
+  );
+  return { restarted: uploaded.length, failed: failed.length };
 }
