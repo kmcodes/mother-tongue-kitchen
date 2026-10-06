@@ -1,0 +1,54 @@
+# Secrets: never commit. Real values live in .env.local; share only .env.example.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+credentials*.json
+service-account*.json
+secrets/
+
+# Voice recordings are personal data. Keep test audio out of the public repo.
+*.wav
+*.mp3
+*.m4a
+*.aac
+*.ogg
+*.opus
+*.webm
+*.flac
+recordings/
+audio-samples/
+
+# Dependencies and build output
+node_modules/
+.next/
+out/
+dist/
+build/
+coverage/
+*.tsbuildinfo
+next-env.d.ts
+
+# Vercel
+.vercel/
+
+# Logs and caches
+*.log
+npm-debug.log*
+.npm/
+.eslintcache
+.turbo/
+
+# OS and editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# Scratch
+tmp/
+scratch/
