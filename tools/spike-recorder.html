@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Spike recorder</title>
+<style>body{font:16px system-ui;max-width:28rem;margin:2rem auto;padding:0 1rem}button{font-size:1.1rem;padding:.7rem 1.2rem;margin:.3rem .3rem .3rem 0}#t{font:2.5rem monospace}</style></head>
+<body>
+<h1>Spike recorder</h1>
+<p>Records in the same format the real app will use (WebM/Opus in Chrome). Throwaway tool.</p>
+<div id="t">0:00</div>
+<input id="name" placeholder="file name, e.g. hindi-aloo-gobi-quiet" style="width:100%;padding:.6rem;margin:.6rem 0">
+<button id="start">Record</button><button id="stop" disabled>Stop and download</button>
+<p id="info"></p>
+<script>
+let rec, chunks = [], t0, tick;
+const $ = (id) => document.getElementById(id);
+$("start").onclick = async () => {
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  const types = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4"];
+  const mime = types.find((t) => MediaRecorder.isTypeSupported(t)) || "";
+  rec = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
+  chunks = [];
+  rec.ondataavailable = (e) => e.data.size && chunks.push(e.data);
+  rec.onstop = () => {
+    stream.getTracks().forEach((t) => t.stop());
+    clearInterval(tick);
+    const blob = new Blob(chunks, { type: rec.mimeType });
+    const ext = rec.mimeType.includes("mp4") ? "m4a" : "webm";
+    const name = ($("name").value.trim() || "recording-" + Date.now()) + "." + ext;
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob); a.download = name; a.click();
+    $("info").textContent = `Saved ${name} (${(blob.size / 1024).toFixed(0)} KB, ${rec.mimeType}). Move it to spike-audio/.`;
+  };
+  rec.start(5000); t0 = Date.now();
+  tick = setInterval(() => { const s = Math.floor((Date.now() - t0) / 1000); $("t").textContent = Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0"); }, 250);
+  $("start").disabled = true; $("stop").disabled = false;
+};
+$("stop").onclick = () => { rec.stop(); $("start").disabled = false; $("stop").disabled = true; };
+</script></body></html>
